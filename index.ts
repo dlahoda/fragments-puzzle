@@ -132,15 +132,15 @@ const FRAGMENTS = [
   "961201",
   "658432",
   "775416",
-  // "246027",
-  // "854036",
-  // "687762",
-  // "389097",
-  // "013153",
-  // "417085",
-  // "919198",
-  // "988711",
-  // "488665"
+  "246027",
+  "854036",
+  "687762",
+  "389097",
+  "013153",
+  "417085",
+  "919198",
+  "988711",
+  "488665",
 ];
 
 function combineFragments(fragments: string[]): string {
@@ -152,134 +152,149 @@ function combineFragments(fragments: string[]): string {
   }, "");
 }
 
-//TODO consider using a graph traversal algorithm to find the longest path through the fragments
-//TODO consider using a recursive function to find the longest path through the fragments
-//TODO consider using a dynamic programming approach to find the longest path through the fragments
-//TODO consider using a backtracking approach to find the longest path through the fragments
-//TODO consider using a depth-first search approach to find the longest path through the fragments
-//TODO consider using a breadth-first search approach to find the longest path through the fragments
-//TODO consider using a greedy approach to find the longest path through the fragments
-//TODO consider using a divide and conquer approach to find the longest path through the fragments
-
 function solve(fragments: string[]): string {
-  const cache = Array.from(
-    { length: fragments.length },
-    () => new Map<bigint, number>(),
-  );
+  const currentPath: number[] = [];
+  let bestPath: number[] = [];
 
-  let bestLength = 0;
-  let bestStartIndex = -1;
+  const visitedStates = Array.from({ length: 100 }, () => new Set<bigint>());
+  const maxVisitedStates = 500_000;
+  let visitedStateCount = 0;
 
-  const fragmentsMap = new Map<number, string[]>();
+  const fragmentEnds: number[] = new Array(fragments.length);
+  const fragmentBits = fragments.map((_, index) => 1n << BigInt(index));
+  const fragmentsByStart: number[][] = Array.from({ length: 100 }, () => []);
+
   for (
     let fragmentIndex = 0;
     fragmentIndex < fragments.length;
     fragmentIndex++
   ) {
-    const start = fragments[fragmentIndex].slice(0, 2);
-    fragmentsMap.set(fragmentIndex, [start]);
+    const fragment = fragments[fragmentIndex];
+    const start = Number(fragment.slice(0, 2));
+    const end = Number(fragment.slice(-2));
+
+    fragmentEnds[fragmentIndex] = end;
+    fragmentsByStart[start].push(fragmentIndex);
   }
 
-  const fragmentsByStart = new Map<string, number[]>();
-  for (const [fragmentIndex, [start]] of fragmentsMap.entries()) {
-    if (!fragmentsByStart.has(start)) {
-      fragmentsByStart.set(start, []);
-    }
-    fragmentsByStart.get(start)?.push(fragmentIndex);
-  }
+  const visitedEnds = new Array<boolean>(100).fill(false);
+  const endsToVisit: number[] = [];
+  const outgoingCounts = new Array<number>(100).fill(0);
+  const incomingCounts = new Array<number>(100).fill(0);
 
-  function getAppendableFragments(end: string, usedMask: bigint): number[] {
-    const fragments = fragmentsByStart.get(end) || [];
-    const appendableFragments = fragments.filter((f) => {
-      const bit = 1n << BigInt(f);
-      return (usedMask & bit) === 0n;
-    });
-    return appendableFragments;
-  }
-
-  function combineFragmentsRecursively(
-    currentIndex: number,
+  function countReachableFragments(
+    currentEnd: number,
     usedMask: bigint,
   ): number {
-    const currentCache = cache[currentIndex];
-    const cachedLength = currentCache.get(usedMask);
+    visitedEnds.fill(false);
+    endsToVisit.length = 0;
+    outgoingCounts.fill(0);
+    incomingCounts.fill(0);
+    endsToVisit.push(currentEnd);
 
-    if (cachedLength !== undefined) {
-      return cachedLength;
-    }
+    let reachableFragments = 0;
 
-    let bestLength = 1;
-    const fragmentEnd = fragments[currentIndex].slice(-2);
-    const appendableFragments = getAppendableFragments(fragmentEnd, usedMask);
+    while (endsToVisit.length > 0) {
+      const end = endsToVisit.pop();
 
-    for (const nextIndex of appendableFragments) {
-      const nextBit = 1n << BigInt(nextIndex);
-      const nextUsedMask = usedMask | nextBit;
-
-      const candidateLength =
-        1 + combineFragmentsRecursively(nextIndex, nextUsedMask);
-
-      if (candidateLength > bestLength) {
-        bestLength = candidateLength;
-      }
-    }
-
-    currentCache.set(usedMask, bestLength);
-    return bestLength;
-  }
-
-  for (const fragmentIndex of fragmentsMap.keys()) {
-    const startMask = 1n << BigInt(fragmentIndex);
-
-    const length = combineFragmentsRecursively(fragmentIndex, startMask);
-
-    if (length > bestLength) {
-      bestLength = length;
-      bestStartIndex = fragmentIndex;
-    }
-  }
-
-  if (bestStartIndex === -1) {
-    return "";
-  }
-
-  const bestPath = [bestStartIndex];
-
-  let currentIndex = bestStartIndex;
-  let usedMask = 1n << BigInt(bestStartIndex);
-
-  while (true) {
-    const currentLength = combineFragmentsRecursively(currentIndex, usedMask);
-
-    const fragmentEnd = fragments[currentIndex].slice(-2);
-    const appendableFragments = getAppendableFragments(fragmentEnd, usedMask);
-
-    let nextIndex = -1;
-
-    for (const candidateIndex of appendableFragments) {
-      const candidateBit = 1n << BigInt(candidateIndex);
-      const candidateMask = usedMask | candidateBit;
-
-      const candidateLength =
-        1 + combineFragmentsRecursively(candidateIndex, candidateMask);
-
-      if (candidateLength === currentLength) {
-        nextIndex = candidateIndex;
+      if (end === undefined) {
         break;
       }
+
+      if (visitedEnds[end]) {
+        continue;
+      }
+
+      visitedEnds[end] = true;
+
+      for (const fragmentIndex of fragmentsByStart[end]) {
+        const fragmentBit = fragmentBits[fragmentIndex];
+
+        if ((usedMask & fragmentBit) !== 0n) {
+          continue;
+        }
+
+        reachableFragments++;
+
+        const nextEnd = fragmentEnds[fragmentIndex];
+
+        outgoingCounts[end] = outgoingCounts[end] + 1;
+        incomingCounts[nextEnd] = incomingCounts[nextEnd] + 1;
+
+        if (!visitedEnds[nextEnd]) {
+          endsToVisit.push(nextEnd);
+        }
+      }
     }
 
-    if (nextIndex === -1) {
-      break;
+    let positiveExcess = 0;
+    let negativeExcess = 0;
+
+    for (let end = 0; end < 100; end++) {
+      const difference = outgoingCounts[end] - incomingCounts[end];
+
+      const allowedPositive = end === currentEnd ? 1 : 0;
+
+      if (difference > allowedPositive) {
+        positiveExcess += difference - allowedPositive;
+      }
+
+      if (difference < 0) {
+        negativeExcess += -difference;
+      }
     }
 
-    bestPath.push(nextIndex);
-    usedMask |= 1n << BigInt(nextIndex);
-    currentIndex = nextIndex;
+    const requiredRemovals = Math.max(
+      positiveExcess,
+      Math.max(0, negativeExcess - 1),
+    );
+
+    return Math.max(0, reachableFragments - requiredRemovals);
+  }
+
+  function search(currentEnd: number, usedMask: bigint): void {
+    if (currentPath.length > bestPath.length) {
+      bestPath = [...currentPath];
+    }
+
+    const maximumPossibleLength =
+      currentPath.length + countReachableFragments(currentEnd, usedMask);
+
+    if (maximumPossibleLength <= bestPath.length) {
+      return;
+    }
+
+    const statesAtCurrentEnd = visitedStates[currentEnd];
+
+    if (statesAtCurrentEnd.has(usedMask)) {
+      return;
+    }
+
+    if (visitedStateCount < maxVisitedStates) {
+      statesAtCurrentEnd.add(usedMask);
+      visitedStateCount++;
+    }
+
+    for (const nextIndex of fragmentsByStart[currentEnd]) {
+      const nextBit = fragmentBits[nextIndex];
+
+      if ((usedMask & nextBit) !== 0n) {
+        continue;
+      }
+
+      currentPath.push(nextIndex);
+      search(fragmentEnds[nextIndex], usedMask | nextBit);
+      currentPath.pop();
+    }
+  }
+
+  for (let startIndex = 0; startIndex < fragments.length; startIndex++) {
+    currentPath.push(startIndex);
+    search(fragmentEnds[startIndex], fragmentBits[startIndex]);
+    currentPath.pop();
   }
 
   return combineFragments(bestPath.map((index) => fragments[index]));
 }
 
 const result = solve(FRAGMENTS);
-console.log("🚀 ~ result:", result);
