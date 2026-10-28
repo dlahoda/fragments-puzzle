@@ -132,15 +132,15 @@ const FRAGMENTS = [
   "961201",
   "658432",
   "775416",
-//   "246027",
-//   "854036",
-//   "687762",
-//   "389097",
-//   "013153",
-//   "417085",
-//   "919198",
-//   "988711",
-//   "488665"
+  // "246027",
+  // "854036",
+  // "687762",
+  // "389097",
+  // "013153",
+  // "417085",
+  // "919198",
+  // "988711",
+  // "488665"
 ];
 
 function combineFragments(fragments: string[]): string {
@@ -164,10 +164,11 @@ function combineFragments(fragments: string[]): string {
 function solve(fragments: string[]): string {
   const cache = Array.from(
     { length: fragments.length },
-    () => new Map<bigint, number[]>(),
+    () => new Map<bigint, number>(),
   );
 
-  const results: [number, number[]][] = [];
+  let bestLength = 0;
+  let bestStartIndex = -1;
 
   const fragmentsMap = new Map<number, string[]>();
   for (
@@ -178,7 +179,6 @@ function solve(fragments: string[]): string {
     const start = fragments[fragmentIndex].slice(0, 2);
     fragmentsMap.set(fragmentIndex, [start]);
   }
-  // for (Л
 
   const fragmentsByStart = new Map<string, number[]>();
   for (const [fragmentIndex, [start]] of fragmentsMap.entries()) {
@@ -188,72 +188,97 @@ function solve(fragments: string[]): string {
     fragmentsByStart.get(start)?.push(fragmentIndex);
   }
 
-  fragmentsMap.forEach((_value, fragmentIndex) => {
-    function getAppendableFragments(end: string, usedMask: bigint): number[] {
-      const fragments = fragmentsByStart.get(end) || [];
-      const appendableFragments = fragments.filter((f) => {
-        const bit = 1n << BigInt(f);
-        return (usedMask & bit) === 0n;
-      });
-      return appendableFragments;
+  function getAppendableFragments(end: string, usedMask: bigint): number[] {
+    const fragments = fragmentsByStart.get(end) || [];
+    const appendableFragments = fragments.filter((f) => {
+      const bit = 1n << BigInt(f);
+      return (usedMask & bit) === 0n;
+    });
+    return appendableFragments;
+  }
+
+  function combineFragmentsRecursively(
+    currentIndex: number,
+    usedMask: bigint,
+  ): number {
+    const currentCache = cache[currentIndex];
+    const cachedLength = currentCache.get(usedMask);
+
+    if (cachedLength !== undefined) {
+      return cachedLength;
     }
 
-    function combineFragmentsRecursively(
-      fragmentsIndexArr: number[],
-      usedMask: bigint,
-      combinationLength: number = 1,
-    ): [number, number[]] {
-      const lastFragmentIndex = fragmentsIndexArr[fragmentsIndexArr.length - 1];
-      const currentCache = cache[lastFragmentIndex];
+    let bestLength = 1;
+    const fragmentEnd = fragments[currentIndex].slice(-2);
+    const appendableFragments = getAppendableFragments(fragmentEnd, usedMask);
 
-      let bestPath = {
-        length: combinationLength,
-        fragments: [...fragmentsIndexArr],
-      };
+    for (const nextIndex of appendableFragments) {
+      const nextBit = 1n << BigInt(nextIndex);
+      const nextUsedMask = usedMask | nextBit;
 
-      if (currentCache.has(usedMask)) {
-        const cachedTail = currentCache.get(usedMask) || [];
-        const combinedFragments = [...fragmentsIndexArr, ...cachedTail];
-        return [combinedFragments.length, combinedFragments];
+      const candidateLength =
+        1 + combineFragmentsRecursively(nextIndex, nextUsedMask);
+
+      if (candidateLength > bestLength) {
+        bestLength = candidateLength;
       }
-
-      const fragmentEndIndex = fragmentsIndexArr[fragmentsIndexArr.length - 1];
-      const fragmentEnd = fragments[fragmentEndIndex].slice(-2);
-      const appendableFragments = getAppendableFragments(fragmentEnd, usedMask);
-      // console.log("🚀 ~ combineFragmentsRecursively ~ appendableFragments:", appendableFragments)
-
-      for (const nextFragment of appendableFragments) {
-        fragmentsIndexArr.push(nextFragment);
-        const nextBit = 1n << BigInt(nextFragment);
-        const nextUsedMask = usedMask | nextBit;
-        const result = combineFragmentsRecursively(
-          fragmentsIndexArr,
-          nextUsedMask,
-          combinationLength + 1,
-        );
-        if (result[0] > bestPath.length) {
-          bestPath = { length: result[0], fragments: result[1] };
-        }
-        fragmentsIndexArr.pop();
-      }
-
-      const bestTail = bestPath.fragments.slice(fragmentsIndexArr.length);
-
-      currentCache.set(usedMask, bestTail);
-
-      return [bestPath.length, bestPath.fragments];
     }
+
+    currentCache.set(usedMask, bestLength);
+    return bestLength;
+  }
+
+  for (const fragmentIndex of fragmentsMap.keys()) {
     const startMask = 1n << BigInt(fragmentIndex);
-    const result = combineFragmentsRecursively([fragmentIndex], startMask);
-    results.push(result);
-  });
-  const maxLength = results.length ? Math.max(...results.map((r) => r[0])) : 0;
 
-  const longestResults = results.find((r) => r[0] === maxLength);
-  const longestResultCombined = longestResults
-    ? combineFragments(longestResults[1].map((i) => fragments[i]))
-    : "";
-  return longestResultCombined;
+    const length = combineFragmentsRecursively(fragmentIndex, startMask);
+
+    if (length > bestLength) {
+      bestLength = length;
+      bestStartIndex = fragmentIndex;
+    }
+  }
+
+  if (bestStartIndex === -1) {
+    return "";
+  }
+
+  const bestPath = [bestStartIndex];
+
+  let currentIndex = bestStartIndex;
+  let usedMask = 1n << BigInt(bestStartIndex);
+
+  while (true) {
+    const currentLength = combineFragmentsRecursively(currentIndex, usedMask);
+
+    const fragmentEnd = fragments[currentIndex].slice(-2);
+    const appendableFragments = getAppendableFragments(fragmentEnd, usedMask);
+
+    let nextIndex = -1;
+
+    for (const candidateIndex of appendableFragments) {
+      const candidateBit = 1n << BigInt(candidateIndex);
+      const candidateMask = usedMask | candidateBit;
+
+      const candidateLength =
+        1 + combineFragmentsRecursively(candidateIndex, candidateMask);
+
+      if (candidateLength === currentLength) {
+        nextIndex = candidateIndex;
+        break;
+      }
+    }
+
+    if (nextIndex === -1) {
+      break;
+    }
+
+    bestPath.push(nextIndex);
+    usedMask |= 1n << BigInt(nextIndex);
+    currentIndex = nextIndex;
+  }
+
+  return combineFragments(bestPath.map((index) => fragments[index]));
 }
 
 const result = solve(FRAGMENTS);
