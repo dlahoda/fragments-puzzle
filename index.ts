@@ -1,147 +1,4 @@
-const FRAGMENTS = [
-  "942517",
-  "605676",
-  "498291",
-  "668826",
-  "357057",
-  "478151",
-  "315629",
-  "007148",
-  "252887",
-  "421662",
-  "284505",
-  "467650",
-  "115330",
-  "648206",
-  "207562",
-  "612298",
-  "576885",
-  "294200",
-  "847595",
-  "021597",
-  "074878",
-  "801997",
-  "585401",
-  "168510",
-  "385293",
-  "151863",
-  "022142",
-  "340350",
-  "976151",
-  "337989",
-  "863284",
-  "488310",
-  "303887",
-  "939173",
-  "331413",
-  "905657",
-  "833617",
-  "170794",
-  "094486",
-  "551394",
-  "943693",
-  "147970",
-  "400196",
-  "537505",
-  "367493",
-  "117178",
-  "675840",
-  "868721",
-  "519081",
-  "735564",
-  "401733",
-  "915348",
-  "169233",
-  "324651",
-  "958675",
-  "368753",
-  "861460",
-  "401341",
-  "343222",
-  "794373",
-  "816374",
-  "535119",
-  "188234",
-  "577779",
-  "097792",
-  "729303",
-  "782637",
-  "148159",
-  "830641",
-  "716890",
-  "397853",
-  "871196",
-  "277603",
-  "749226",
-  "839595",
-  "131852",
-  "409432",
-  "810698",
-  "456030",
-  "529185",
-  "758823",
-  "265024",
-  "051041",
-  "699031",
-  "737269",
-  "139340",
-  "730977",
-  "249786",
-  "039931",
-  "055669",
-  "100107",
-  "653178",
-  "279773",
-  "336550",
-  "332847",
-  "685485",
-  "423269",
-  "193536",
-  "890062",
-  "377637",
-  "595777",
-  "412134",
-  "322736",
-  "546929",
-  "616370",
-  "767332",
-  "781184",
-  "920944",
-  "851005",
-  "258850",
-  "064083",
-  "051202",
-  "427711",
-  "359855",
-  "540928",
-  "314284",
-  "085261",
-  "880969",
-  "649699",
-  "064881",
-  "705423",
-  "646927",
-  "252556",
-  "272007",
-  "217511",
-  "620286",
-  "229724",
-  "108865",
-  "124636",
-  "231417",
-  "961201",
-  "658432",
-  "775416",
-  "246027",
-  "854036",
-  "687762",
-  "389097",
-  "013153",
-  "417085",
-  "919198",
-  "988711",
-  "488665",
-];
+import { readFileSync } from "node:fs";
 
 function combineFragments(fragments: string[]): string {
   return fragments.reduce((acc, fragment) => {
@@ -152,9 +9,38 @@ function combineFragments(fragments: string[]): string {
   }, "");
 }
 
+function readFragments(filePath: string): string[] {
+  const fileContent = readFileSync(filePath, "utf8");
+
+  return fileContent.split(/\s+/).filter((fragment) => fragment.length > 0);
+}
+
+function validateFragments(fragments: string[]): void {
+  if (fragments.length === 0) {
+    throw new Error("The input file contains no fragments.");
+  }
+
+  for (let index = 0; index < fragments.length; index++) {
+    const fragment = fragments[index];
+
+    if (!/^\d+$/.test(fragment)) {
+      throw new Error(
+        `Fragment ${index + 1} contains non-digit characters: "${fragment}"`,
+      );
+    }
+
+    if (fragment.length < 2) {
+      throw new Error(
+        `Fragment ${index + 1} must contain at least two digits.`,
+      );
+    }
+  }
+}
+
 function solve(fragments: string[]): string {
   const currentPath: number[] = [];
   let bestPath: number[] = [];
+  let bestCombinedLength = 0;
 
   const visitedStates = Array.from({ length: 100 }, () => new Set<bigint>());
   const maxVisitedStates = 500_000;
@@ -163,6 +49,9 @@ function solve(fragments: string[]): string {
   const fragmentEnds: number[] = new Array(fragments.length);
   const fragmentBits = fragments.map((_, index) => 1n << BigInt(index));
   const fragmentsByStart: number[][] = Array.from({ length: 100 }, () => []);
+  const fragmentAdditionalLengths = fragments.map(
+    (fragment) => fragment.length - 2,
+  );
 
   for (
     let fragmentIndex = 0;
@@ -182,7 +71,7 @@ function solve(fragments: string[]): string {
   const outgoingCounts = new Array<number>(100).fill(0);
   const incomingCounts = new Array<number>(100).fill(0);
 
-  function countReachableFragments(
+  function calculateMaximumAdditionalLength(
     currentEnd: number,
     usedMask: bigint,
   ): number {
@@ -192,7 +81,8 @@ function solve(fragments: string[]): string {
     incomingCounts.fill(0);
     endsToVisit.push(currentEnd);
 
-    let reachableFragments = 0;
+    let reachableAdditionalLength = 0;
+    let smallestAdditionalLength = Infinity;
 
     while (endsToVisit.length > 0) {
       const end = endsToVisit.pop();
@@ -214,7 +104,15 @@ function solve(fragments: string[]): string {
           continue;
         }
 
-        reachableFragments++;
+        const additionalLength = fragmentAdditionalLengths[fragmentIndex];
+
+        reachableAdditionalLength =
+          reachableAdditionalLength + additionalLength;
+
+        smallestAdditionalLength = Math.min(
+          smallestAdditionalLength,
+          additionalLength,
+        );
 
         const nextEnd = fragmentEnds[fragmentIndex];
 
@@ -249,18 +147,30 @@ function solve(fragments: string[]): string {
       Math.max(0, negativeExcess - 1),
     );
 
-    return Math.max(0, reachableFragments - requiredRemovals);
+    if (smallestAdditionalLength === Infinity) {
+      return 0;
+    }
+
+    const minimumRemovedLength = requiredRemovals * smallestAdditionalLength;
+
+    return Math.max(0, reachableAdditionalLength - minimumRemovedLength);
   }
 
-  function search(currentEnd: number, usedMask: bigint): void {
-    if (currentPath.length > bestPath.length) {
+  function search(
+    currentEnd: number,
+    usedMask: bigint,
+    currentCombinedLength: number,
+  ): void {
+    if (currentCombinedLength > bestCombinedLength) {
+      bestCombinedLength = currentCombinedLength;
       bestPath = [...currentPath];
     }
 
     const maximumPossibleLength =
-      currentPath.length + countReachableFragments(currentEnd, usedMask);
+      currentCombinedLength +
+      calculateMaximumAdditionalLength(currentEnd, usedMask);
 
-    if (maximumPossibleLength <= bestPath.length) {
+    if (maximumPossibleLength <= bestCombinedLength) {
       return;
     }
 
@@ -283,18 +193,37 @@ function solve(fragments: string[]): string {
       }
 
       currentPath.push(nextIndex);
-      search(fragmentEnds[nextIndex], usedMask | nextBit);
+      search(
+        fragmentEnds[nextIndex],
+        usedMask | nextBit,
+        currentCombinedLength + fragmentAdditionalLengths[nextIndex],
+      );
       currentPath.pop();
     }
   }
 
   for (let startIndex = 0; startIndex < fragments.length; startIndex++) {
     currentPath.push(startIndex);
-    search(fragmentEnds[startIndex], fragmentBits[startIndex]);
+    search(
+      fragmentEnds[startIndex],
+      fragmentBits[startIndex],
+      fragments[startIndex].length,
+    );
     currentPath.pop();
   }
 
   return combineFragments(bestPath.map((index) => fragments[index]));
 }
 
-const result = solve(FRAGMENTS);
+const filePath = process.argv[2];
+
+if (!filePath) {
+  throw new Error("Usage: node index.ts <path-to-source.txt>");
+}
+
+const fragments = readFragments(filePath);
+
+validateFragments(fragments);
+
+const result = solve(fragments);
+console.log(result);
